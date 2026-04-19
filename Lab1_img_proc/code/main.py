@@ -90,7 +90,7 @@ class Triangle:
         return self.p2 - self.p0
 
     def normal(self) -> Vec3:
-        n = self.edge2().cross(self.edge1())
+        n = self.edge1().cross(self.edge2())
         return n.normalized()
 
     def point_from_local(self, x: float, y: float) -> Vec3:
@@ -105,27 +105,40 @@ def safe_pow(base: float, exponent: float) -> float:
     return base ** exponent
 
 
-def light_intensity_for_direction(light: Light, s_hat: Vec3) -> Vec3:
+def light_intensity_for_direction(light: Light, source_to_point_hat: Vec3) -> Vec3:
     axis_hat = light.axis.normalized()
-    cos_theta = max(0.0, s_hat.dot(axis_hat))
+    cos_theta = max(0.0, source_to_point_hat.dot(axis_hat))
     return light.intensity0 * cos_theta
 
 
 def compute_illuminance(light: Light, point: Vec3, normal: Vec3) -> Vec3:
-    s = point - light.position
-    r2 = s.dot(s)
+    source_to_point = point - light.position
+    r2 = source_to_point.dot(source_to_point)
     if r2 < EPS:
         raise ValueError("Точка совпала с положением источника света")
 
-    s_hat = s.normalized()
-    cos_alpha = max(0.0, s_hat.dot(normal))
-    intensity = light_intensity_for_direction(light, s_hat)
+    source_to_point_hat = source_to_point.normalized()
+    point_to_light_hat = (light.position - point).normalized()
+
+    cos_alpha = max(0.0, normal.dot(point_to_light_hat))
+    if cos_alpha <= 0.0:
+        return Vec3(0.0, 0.0, 0.0)
+
+    intensity = light_intensity_for_direction(light, source_to_point_hat)
     return intensity * (cos_alpha / r2)
 
 
-def compute_brdf(surface: Surface, normal: Vec3, view_dir: Vec3, s_hat: Vec3) -> Vec3:
+def compute_brdf(surface: Surface, normal: Vec3, view_dir: Vec3, point_to_light_hat: Vec3) -> Vec3:
     v_hat = view_dir.normalized()
-    h_raw = v_hat + s_hat
+    l_hat = point_to_light_hat.normalized()
+
+    n_dot_v = normal.dot(v_hat)
+    n_dot_l = normal.dot(l_hat)
+
+    if n_dot_v <= 0.0 or n_dot_l <= 0.0:
+        return Vec3(0.0, 0.0, 0.0)
+
+    h_raw = v_hat + l_hat
     if h_raw.norm() < EPS:
         specular_term = 0.0
     else:
@@ -136,16 +149,28 @@ def compute_brdf(surface: Surface, normal: Vec3, view_dir: Vec3, s_hat: Vec3) ->
     return surface.color * scalar
 
 
-def compute_brightness(lights: List[Light], surface: Surface, triangle: Triangle, point: Vec3, view_dir: Vec3) -> Tuple[List[Vec3], Vec3]:
+def compute_brightness(
+    lights: List[Light],
+    surface: Surface,
+    triangle: Triangle,
+    point: Vec3,
+    view_dir: Vec3
+) -> Tuple[List[Vec3], Vec3]:
     n = triangle.normal()
     illuminances = []
     total = Vec3(0.0, 0.0, 0.0)
 
+    v_hat = view_dir.normalized()
+    if n.dot(v_hat) <= 0.0:
+        zero_list = [Vec3(0.0, 0.0, 0.0) for _ in lights]
+        return zero_list, Vec3(0.0, 0.0, 0.0)
+
     for light in lights:
-        s = point - light.position
-        s_hat = s.normalized()
+        point_to_light_hat = (light.position - point).normalized()
+
         e = compute_illuminance(light, point, n)
-        f = compute_brdf(surface, n, view_dir, s_hat)
+        f = compute_brdf(surface, n, view_dir, point_to_light_hat)
+
         l_i = e.hadamard(f)
         illuminances.append(e)
         total = total + l_i
@@ -229,7 +254,7 @@ def main() -> None:
         ke=20.0
     )
 
-    view_dir = Vec3(1.0, 1.0, 2.0)
+    view_dir = Vec3(-1.0, -1.0, 2.0)
 
     local_points = [
         (0.2, 0.2),
