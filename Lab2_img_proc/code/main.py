@@ -31,17 +31,17 @@ def print_header(title: str) -> None:
 def print_table(title: str, rows: List[Tuple]) -> None:
     print_header(title)
     print(
-        f"{'Параметр':<20}"
+        f"{'Параметр':<30}"
         f"{'N':>10}"
         f"{'I_true':>18}"
         f"{'I_MC':>18}"
         f"{'|Ошибка|':>18}"
         f"{'ΔI=I_true/sqrt(N)':>22}"
     )
-    print("-" * 110)
+    print("-" * 116)
     for param, n, i_true, i_mc, err, delta in rows:
         print(
-            f"{str(param):<20}"
+            f"{str(param):<30}"
             f"{n:>10}"
             f"{i_true:>18.8f}"
             f"{i_mc:>18.8f}"
@@ -109,12 +109,12 @@ def importance_sampling(n: int, k: int, rng: random.Random) -> float:
     return s / n
 
 
-def mis_weights_balance(x: float, p1: float, p2: float) -> Tuple[float, float]:
+def mis_weights_balance(p1: float, p2: float) -> Tuple[float, float]:
     denom = p1 + p2
     return p1 / denom, p2 / denom
 
 
-def mis_weights_power2(x: float, p1: float, p2: float) -> Tuple[float, float]:
+def mis_weights_power2(p1: float, p2: float) -> Tuple[float, float]:
     p1_2 = p1 * p1
     p2_2 = p2 * p2
     denom = p1_2 + p2_2
@@ -139,14 +139,14 @@ def multiple_importance_sampling(n: int, weight_mode: str, rng: random.Random) -
         x = sample_power_pdf(1, A, B, rng)
         p1 = pdf_power(x, 1, A, B)
         p2 = pdf_power(x, 3, A, B)
-        w1, _ = weight_func(x, p1, p2)
+        w1, _ = weight_func(p1, p2)
         part1 += w1 * f(x) / p1
 
     for _ in range(n2):
         x = sample_power_pdf(3, A, B, rng)
         p1 = pdf_power(x, 1, A, B)
         p2 = pdf_power(x, 3, A, B)
-        _, w2 = weight_func(x, p1, p2)
+        _, w2 = weight_func(p1, p2)
         part2 += w2 * f(x) / p2
 
     result = 0.0
@@ -158,16 +158,15 @@ def multiple_importance_sampling(n: int, weight_mode: str, rng: random.Random) -
     return result
 
 
-def russian_roulette_monte_carlo(n: int, r_cutoff: float, rng: random.Random) -> float:
-    q = 1.0 - r_cutoff
-    if q <= 0.0:
-        raise ValueError("R должно быть меньше 1")
+def russian_roulette_monte_carlo(n: int, r: float, rng: random.Random) -> float:
+    if not (0.0 < r <= 1.0):
+        raise ValueError("R должно быть в диапазоне (0, 1]")
 
     s = 0.0
     for _ in range(n):
         x = rng.uniform(A, B)
-        if rng.random() < q:
-            s += f(x) / q
+        if rng.random() < r:
+            s += f(x) / r
         else:
             s += 0.0
 
@@ -183,12 +182,12 @@ def delta_estimate(n: int) -> float:
 
 
 def main() -> None:
-    print(f"Функция: f(x) = x^2")
+    print("Функция: f(x) = x^2")
     print(f"Интервал: [{A}, {B}]")
     print(f"Истинное значение интеграла: {I_TRUE:.8f}")
     print(f"Используемые N: {N_VALUES}")
     print(f"Шаги стратификации: {STRAT_STEPS}")
-    print(f"Пороги русской рулетки: {RUSSIAN_R_VALUES}")
+    print(f"Параметры R для русской рулетки: {RUSSIAN_R_VALUES}")
     print(f"Seed генератора: {SEED}")
 
     print_header("АНАЛИТИЧЕСКОЕ РЕШЕНИЕ")
@@ -214,7 +213,7 @@ def main() -> None:
             rng = random.Random(SEED + 2000 + int(step * 1000) + n)
             estimate = stratified_monte_carlo(n, step, rng)
             rows.append((
-                f"step={step}",
+                f"Шаг {step}",
                 n,
                 I_TRUE,
                 estimate,
@@ -229,7 +228,7 @@ def main() -> None:
             rng = random.Random(SEED + 3000 + 10 * k + n)
             estimate = importance_sampling(n, k, rng)
             rows.append((
-                f"p(x)~x^{k}",
+                f"Плотность p=x^{k}" if k != 1 else "Плотность p=x",
                 n,
                 I_TRUE,
                 estimate,
@@ -244,7 +243,7 @@ def main() -> None:
             rng = random.Random(SEED + 4000 + (1 if mode == "balance" else 2) * 100 + n)
             estimate = multiple_importance_sampling(n, mode, rng)
             rows.append((
-                mode,
+                "Средняя плотность" if mode == "balance" else "Средний квадрат плотностей",
                 n,
                 I_TRUE,
                 estimate,
