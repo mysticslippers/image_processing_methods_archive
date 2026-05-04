@@ -164,6 +164,87 @@ def format_counts(title: str, counts: List[int]) -> str:
     return "\n".join(lines)
 
 
+def axis_from_angle_deg(angle_deg: float) -> Vec3:
+    """
+    Строит единичный вектор, отклоненный от нормали +Z на заданный угол.
+    Для простоты все проверочные оси лежат в плоскости XZ.
+    """
+    angle = math.radians(angle_deg)
+
+    x = math.sin(angle)
+    y = 0.0
+    z = math.cos(angle)
+
+    return Vec3(x, y, z).normalized()
+
+
+def format_cosine_cone_table(points: List[Vec3], samples: int) -> str:
+    """
+    Проверка неравномерности косинусного распределения через конусы.
+
+    Берутся конусы одинакового полуугла alpha, но их оси отклонены от нормали N
+    на разные углы beta. Для косинусного распределения вокруг N = +Z
+    число направлений в таком конусе должно уменьшаться при увеличении beta.
+
+    Если конус целиком лежит в верхней полусфере, теоретическая вероятность:
+    P = sin^2(alpha) * cos(beta)
+    """
+    alpha_deg = 20.0
+    alpha = math.radians(alpha_deg)
+    cos_alpha = math.cos(alpha)
+
+    axis_angles = [0, 15, 30, 45, 60]
+
+    lines = []
+    lines.append("Проверка неравномерности косинусного распределения через конусы")
+    lines.append(f"Полуугол конуса alpha = {alpha_deg:.1f} градусов")
+    lines.append("-" * 110)
+    lines.append(
+        f"{'Угол оси к N':>12} | "
+        f"{'cos(beta)':>10} | "
+        f"{'Теор. вероятность':>18} | "
+        f"{'Ожидается':>12} | "
+        f"{'Получено':>10} | "
+        f"{'Ошибка, %':>10}"
+    )
+    lines.append("-" * 110)
+
+    for beta_deg in axis_angles:
+        axis = axis_from_angle_deg(beta_deg)
+
+        count = 0
+        for d in points:
+            if d.dot(axis) >= cos_alpha:
+                count += 1
+
+        beta = math.radians(beta_deg)
+        cos_beta = math.cos(beta)
+
+        theoretical_probability = (math.sin(alpha) ** 2) * cos_beta
+        expected = samples * theoretical_probability
+
+        error_percent = abs(count - expected) / expected * 100.0
+
+        lines.append(
+            f"{beta_deg:>12.1f} | "
+            f"{cos_beta:>10.6f} | "
+            f"{theoretical_probability:>18.6f} | "
+            f"{expected:>12.2f} | "
+            f"{count:>10} | "
+            f"{error_percent:>9.3f}%"
+        )
+
+    lines.append("")
+    lines.append(
+        "Вывод: при увеличении угла beta между осью конуса и нормалью N значение cos(beta) уменьшается, "
+        "поэтому ожидаемое и фактическое число направлений в конусе также уменьшается. "
+        "Это показывает, что распределение направлений не является равномерным по полусфере, "
+        "а имеет косинусный характер."
+    )
+
+    return "\n".join(lines)
+
+
 def triangle_experiment(samples: int, rng: random.Random) -> Tuple[str, List[Vec3], List[int]]:
     v1 = Vec3(0.0, 0.0, 0.0)
     v2 = Vec3(4.0, 1.0, 0.0)
@@ -373,6 +454,8 @@ def cosine_experiment(samples: int, rng: random.Random) -> Tuple[str, List[Vec3]
     text.append(f"Средняя длина вектора = {mean(lengths):.6f} / ожидается 1.000000")
     text.append(f"Среднее mu = cos(theta) = {mean(mu_values):.6f} / ожидается 0.666667")
     text.append(f"Среднее mu^2 = {mean(mu_sq_values):.6f} / ожидается 0.500000")
+    text.append("")
+    text.append(format_cosine_cone_table(points, samples))
     text.append("")
     text.append(format_counts("Попадания в 8 равновероятных областей", counts))
 
